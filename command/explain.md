@@ -6,7 +6,7 @@ description: "Explain code, concepts, or features in clear terms"
 
 **Purpose**: Explain code, concepts, or features in clear, understandable terms.
 
-**Arguments**: `$ARGUMENTS` (file path, code snippet, or concept)
+**Arguments**: `$ARGUMENTS` (file path, code snippet, concept, or empty for current file/project context)
 
 ---
 

@@ -6,7 +6,7 @@ description: "Code review against standards with actionable feedback"
 
 **Purpose**: Review code against project standards and provide actionable feedback.
 
-**Arguments**: `$ARGUMENTS` (file path or directory)
+**Arguments**: `$ARGUMENTS` (file path, directory, or empty for current project)
 
 ---
 
@@ -14,13 +14,16 @@ description: "Code review against standards with actionable feedback"
 
 ```bash
 # Review specific file
-/review src/auth/login.ts
+/code-review src/auth/login.ts
 
 # Review directory
-/review src/components/
+/code-review src/components/
 
 # Review current changes
-/review
+/code-review
+
+# Review entire project (no arguments defaults to project root)
+/code-review
 ```
 
 ---

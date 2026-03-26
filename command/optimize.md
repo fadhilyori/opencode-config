@@ -12,7 +12,7 @@ Analyze and optimize code for performance, security, and identifying potential i
 
 ### Step 1: Determine Analysis Scope
 - If arguments provided: Focus on specified files/directories
-- If no arguments: Analyze current context (open files, recent changes)
+- If no arguments: Analyze entire current project codebase
 
 ### Step 2: Performance Analysis
 
