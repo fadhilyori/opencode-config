@@ -18,5 +18,11 @@
       "enabled": true,
       "url": "https://mcp.grep.app"
     }
+  },
+  "server": {
+      "port": 4096,
+      "hostname": "0.0.0.0",
+      "mdns": true,
+      "cors": ["*"]
   }
 }
