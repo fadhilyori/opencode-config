@@ -47,13 +47,13 @@ For workflows and patterns, use skills instead of reading files directly:
 | Task | Skill Name |
 |------|------------|
 | Code review | `code-review` |
-| Complex task management | `session-management` |
 | Input validation | `input-validation` |
 | Retry logic | `retry-mechanism` |
 | Circuit breaker | `circuit-breaker` |
 | Parallel execution | `parallel-execution` |
 | Rate limiting | `rate-limiting` |
 | Event coordination | `event-coordination` |
+| Find available skills | `find-skills` |
 
 ---
 
