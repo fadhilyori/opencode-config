@@ -14,7 +14,7 @@ permission:
   task:
     researcher: "allow"
     docfetcher: "allow"
-model: opencode-go/minimax-m2.7
+model: opencode-go/glm-5
 hidden: true
 ---
 

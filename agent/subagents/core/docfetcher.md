@@ -13,7 +13,7 @@ permission:
     "*": "deny"
   task:
     "*": "deny"
-model: opencode-go/minimax-m2.7
+model: opencode-go/minimax-m2.5
 tools:
   read: true
   write: true

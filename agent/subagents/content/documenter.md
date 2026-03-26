@@ -13,7 +13,7 @@ permission:
     "**/*.secret": "deny"
   task:
     "*": "deny"
-model: opencode-go/kimi-k2.5
+model: opencode-go/minimax-m2.5
 hidden: true
 ---
 
