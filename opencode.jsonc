@@ -4,6 +4,7 @@
   "autoupdate": true,
   "share": "disabled",
   "model": "opencode-go/kimi-k2.5",
+  "small_model": "opencode-go/minimax-m2.5",
   "disabled_providers": [],
   "permission": {},
   "provider": {},
@@ -24,5 +25,8 @@
       "hostname": "0.0.0.0",
       "mdns": true,
       "cors": ["*"]
-  }
+  },
+  "compaction": {
+    "auto": true,
+  },
 }
