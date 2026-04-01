@@ -3,10 +3,16 @@
   "plugin": [],
   "autoupdate": true,
   "share": "disabled",
-  "model": "opencode-go/kimi-k2.5",
-  "small_model": "opencode-go/minimax-m2.5",
+  "model": "minimax-coding-plan/MiniMax-M2.7",
+  "small_model": "minimax-coding-plan/MiniMax-M2.5",
   "disabled_providers": [],
-  "permission": {},
+  "permission": {
+    "bash": {
+      "git status *": "allow",
+      "git diff *": "allow",
+      "grep *": "allow"
+    }
+  },
   "provider": {},
   "mcp": {
     "context7": {
@@ -18,6 +24,15 @@
       "type": "remote",
       "enabled": true,
       "url": "https://mcp.grep.app"
+    },
+    "MiniMax": {
+      "enabled": true,
+      "type": "local",
+      "command": ["uvx", "minimax-coding-plan-mcp", "-y"],
+      "environment": {
+        "MINIMAX_API_KEY": "{env:MINIMAX_TOKEN_PLAN_API_KEY}",
+        "MINIMAX_API_HOST": "https://api.minimax.io"
+      }
     }
   },
   "compaction": {

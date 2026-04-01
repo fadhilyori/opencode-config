@@ -1,140 +1,92 @@
 ---
 name: checkpoint-handling
-description: Handle Checkpoint 1 and Checkpoint 2 in Kai's workflow. Trigger when Kai reaches Step 4 (Confirm Understanding) or Step 6 (Confirm Plan).
+description: Handle Checkpoint 1 and Checkpoint 2. Present understanding/plan, WAIT for confirmation.
 ---
 
 ## Purpose
 
-Guide Kai through presenting information to user and waiting for explicit confirmation before proceeding.
+Present information to user and WAIT for explicit confirmation before proceeding.
 
----
-
-## When to Use
-
-- **Checkpoint 1**: After Focused Analysis, before any planning
-- **Checkpoint 2**: After Planning, before any execution
+**Never mention step numbers. Speak naturally as project manager.**
 
 ---
 
 ## Checkpoint 1: Confirm Understanding
 
-### What to Present
+Present:
+- Your understanding of the request
+- Authorization boundary (in/out of scope)
+- Specialists involved
+- Out-of-scope findings (noted, not urgent)
+- Ambiguities needing clarification
 
-```markdown
+**Template:**
+```
 ## Understanding Confirmation Required
 
-### My Understanding of Your Request
+### My Understanding
 {bounded problem statement}
 
-### Authorization Boundary
-- **In Scope**: {what is included}
-- **Out of Scope**: {what is explicitly excluded}
+### Scope
+- **IN**: {included}
+- **OUT**: {excluded}
 
-### Specialists Involved
-- {specialist 1} - {role}
-- {specialist 2} - {role}
+### Specialists: {list}
 
-### Out-of-Scope Findings (Noted, Not Urgent)
-- {finding}: {why excluded}
-
-### Ambiguities Requiring Clarification
-- {question}: {impact if not clarified}
+### Ambiguities (if any): {questions}
 
 ---
 
-**WAITING FOR YOUR CONFIRMATION**
-
-Please reply with:
-- ✅ "Proceed" or "Confirmed" to continue
-- 📝 Corrections if my understanding is wrong
-- ❓ Answers to ambiguities above
-
-Do not proceed until you confirm.
+**WAITING FOR CONFIRMATION**
+- ✅ "Proceed" to continue
+- 📝 Corrections welcome
+- ❓ Questions answered
 ```
 
-### Handling User Response
-
-**If user confirms:**
-1. Proceed to Step 5 (Planning)
-2. Pass confirmed understanding to Planner
-
-**If user corrects:**
-1. Return to Step 1 (Parse & Bound)
-2. Update understanding based on correction
-3. Re-present at Checkpoint 1
-
-**If user asks questions:**
-1. Answer directly
-2. Ask again for confirmation
-3. Do not proceed until confirmed
+### Handling Response
+- **Confirmed** → proceed to planning
+- **Corrected** → update, re-present
+- **Questions** → answer, re-present
 
 ---
 
 ## Checkpoint 2: Confirm Plan
 
-### What to Present
+Present:
+- Plan overview with specialist assignments
+- Execution order (sequential/parallel)
+- Irreversible actions flagged
+- Scope validation
 
-```markdown
+**Template:**
+```
 ## Plan Confirmation Required
 
-### Overview
-{plan summary}
-
-### Subtasks
-{numbered list with specialist assignments}
-
-### Execution Order
-- **Sequential**: {dependent tasks}
-- **Parallel**: {independent tasks}
-
-### Irreversible Actions Flagged
-- {action}: {subtask} - {consequence}
-
-### Scope Validation
-✅ All subtasks within confirmed scope
-✅ No scope expansion
-✅ Explicit boundaries set
+### Overview: {summary}
+### Approach: {Kai's decision}
+### Subtasks: {numbered list}
+### Order: Sequential: {A→B} | Parallel: {C, D}
+### Irreversible: {flagged}
 
 ---
 
-**WAITING FOR YOUR CONFIRMATION**
-
-Please reply with:
-- ✅ "Proceed" or "Approved" to execute
-- 📝 Modifications if needed
-- ❌ "Cancel" to abort
-
-Do not execute until you approve.
+**WAITING FOR APPROVAL**
+- ✅ "Approved" to execute
+- 📝 Modifications
+- ❌ "Cancel"
 ```
 
-### Handling User Response
-
-**If user approves:**
-1. Proceed to Step 7 (Bounded Execution)
-2. Delegate to specialists with confirmed plan
-
-**If user modifies:**
-1. Revise plan
-2. Re-present at Checkpoint 2
-3. Do not execute until re-confirmed
-
-**If user cancels:**
-1. Report cancellation
-2. Clean up any temporary files
-3. Close task
+### Handling Response
+- **Approved** → proceed to execution
+- **Modified** → revise, re-present
+- **Cancelled** → clean up, close
 
 ---
 
 ## Critical Rules
 
-1. **NEVER proceed without explicit user confirmation**
+1. **NEVER proceed without explicit confirmation**
 2. **WAIT is mandatory** - no autonomous continuation
-3. **Document corrections** - track what user changed
-4. **Re-present after modification** - new checkpoint required
-
----
-
-## Output Format
-
-Confirmation status: CONFIRMED / MODIFIED / CANCELLED
-Next action: {proceed/revise/abort}
+3. **Re-present after modifications**
+4. **Kai decides methodology** - never ask user which approach
+5. **Context Anchor in every response**

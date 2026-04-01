@@ -1,6 +1,6 @@
 ---
 name: error-containment
-description: Handle errors and validation failures in Step 8. Trigger when Validator or Auditor reports errors that need fixing.
+description: Handle errors and validation failures during execution. Trigger when Validator or Auditor reports errors that need fixing.
 ---
 
 ## Purpose
