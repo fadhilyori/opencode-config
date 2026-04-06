@@ -32,7 +32,12 @@ trap cleanup EXIT INT TERM
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${SCRIPT_DIR}/src"
+# Resolve DEST_DIR to canonical path (follows symlinks)
 DEST_DIR="$(realpath "${HOME}/.config/opencode" 2>/dev/null || echo "${HOME}/.config/opencode")"
+
+# Determine actual source directory (resolve symlinks for accurate comparison)
+SRC_DIR_RESOLVED="$(realpath "$SRC_DIR" 2>/dev/null || echo "$SRC_DIR")"
+DEST_DIR_RESOLVED="$(realpath "$DEST_DIR" 2>/dev/null || echo "$DEST_DIR")"
 for f in "${SCRIPT_DIR}/map-models.json" "${SCRIPT_DIR}/map-models.jsonc"; do
 	if [[ -f "$f" ]]; then
 		CONFIG_FILE="$f"
@@ -482,15 +487,23 @@ install_files() {
 	orphaned_tmp=$(mktemp) || error_exit "$EXIT_FILE_ERROR" "Failed to create temporary file"
 	TEMP_FILES+=("$orphaned_tmp")
 
-	while IFS= read -r -d '' dest_file; do
-		local rel_path="${dest_file#$DEST_DIR/}"
-		local check_file="${SRC_DIR}/${rel_path}"
-		if [[ ! -f "$check_file" ]]; then
-			echo "$rel_path" >>"$orphaned_tmp"
-		fi
-	done < <(find "$DEST_DIR" -name '*.md' -print0 2>/dev/null || true)
+	# Check if DEST_DIR is symlinked to SRC_DIR or its parent
+	# Skip orphan detection if they point to the same location
+	if [[ "$SRC_DIR_RESOLVED" == "$DEST_DIR_RESOLVED" ]] || [[ "$SRC_DIR_RESOLVED" == "${DEST_DIR_RESOLVED}/src" ]]; then
+		# DEST_DIR is symlinked to SRC_DIR or SRC_DIR's parent, skip orphan detection
+		ORPHANED_FILES=""
+	else
+		# Normal orphan detection
+		while IFS= read -r -d '' dest_file; do
+			local rel_path="${dest_file#$DEST_DIR/}"
+			local check_file="${SRC_DIR}/${rel_path}"
+			if [[ ! -f "$check_file" ]]; then
+				echo "$rel_path" >>"$orphaned_tmp"
+			fi
+		done < <(find "$DEST_DIR" -name '*.md' -print0 2>/dev/null || true)
 
-	ORPHANED_FILES=$(cat "$orphaned_tmp")
+		ORPHANED_FILES=$(cat "$orphaned_tmp")
+	fi
 }
 
 confirm_install() {
@@ -564,6 +577,13 @@ main() {
 
 	if [[ ! -d "$SRC_DIR" ]]; then
 		error_exit "$EXIT_FILE_ERROR" "Source directory not found: $SRC_DIR"
+	fi
+
+	# Detect symlinked setup early
+	if [[ "$SRC_DIR_RESOLVED" == "$DEST_DIR_RESOLVED" ]] || [[ "$SRC_DIR_RESOLVED" == "${DEST_DIR_RESOLVED}/src" ]]; then
+		echo "Note: Destination appears to be symlinked to source directory."
+		echo "      Orphan file detection will be skipped."
+		echo ""
 	fi
 
 	if [[ "$LIST_ONLY" == true ]]; then
