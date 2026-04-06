@@ -214,11 +214,86 @@ parse_jsonc() {
 
 	# Use command-line argument instead of heredoc to prevent injection
 	if command -v python3 &>/dev/null; then
-		python3 -c 'import json, sys; print(json.dumps(json.loads(open(sys.argv[1]).read())))' "$file"
+		python3 -c '
+import json, sys, re
+
+# Read file
+content = open(sys.argv[1]).read()
+
+# Remove single-line comments (but preserve URLs with ://)
+lines = []
+for line in content.split("\n"):
+    # Find // position but skip ://
+    pos = line.find("//")
+    while pos != -1:
+        # Check if preceded by : (part of URL)
+        if pos > 0 and line[pos-1] == ":":
+            # This is part of URL, find next //
+            pos = line.find("//", pos+2)
+        else:
+            # This is a comment
+            line = line[:pos]
+            break
+    lines.append(line)
+content = "\n".join(lines)
+
+# Remove multi-line comments
+content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
+
+# Remove empty lines
+content = re.sub(r"^\s*$\n", "", content, flags=re.MULTILINE)
+
+# Remove trailing commas before } or ]
+content = re.sub(r",(\s*[}\]])", r"\1", content)
+
+# Parse as JSON
+data = json.loads(content)
+
+# Output as JSON
+print(json.dumps(data))
+' "$file"
 	elif command -v python &>/dev/null; then
-		python -c 'import json, sys; print(json.dumps(json.loads(open(sys.argv[1]).read())))' "$file"
+		python -c '
+import json, sys, re
+
+# Read file
+content = open(sys.argv[1]).read()
+
+# Remove single-line comments (but preserve URLs with ://)
+lines = []
+for line in content.split("\n"):
+    # Find // position but skip ://
+    pos = line.find("//")
+    while pos != -1:
+        # Check if preceded by : (part of URL)
+        if pos > 0 and line[pos-1] == ":":
+            # This is part of URL, find next //
+            pos = line.find("//", pos+2)
+        else:
+            # This is a comment
+            line = line[:pos]
+            break
+    lines.append(line)
+content = "\n".join(lines)
+
+# Remove multi-line comments
+content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
+
+# Remove empty lines
+content = re.sub(r"^\s*$\n", "", content, flags=re.MULTILINE)
+
+# Remove trailing commas before } or ]
+content = re.sub(r",(\s*[}\]])", r"\1", content)
+
+# Parse as JSON
+data = json.loads(content)
+
+# Output as JSON
+print(json.dumps(data))
+' "$file"
 	else
 		# Fallback: remove single-line and multi-line comments
+		# Note: This is a simplified version and may not handle all cases
 		sed 's|^[[:space:]]*//.*||g' "$file" | sed 's|/\*.*\*/||g'
 	fi
 }
