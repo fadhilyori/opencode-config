@@ -33,7 +33,7 @@ trap cleanup EXIT INT TERM
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${SCRIPT_DIR}/src"
 # Resolve DEST_DIR to canonical path (follows symlinks)
-DEST_DIR="$(realpath "${HOME}/.config/opencode" 2>/dev/null || echo "${HOME}/.config/opencode")"
+DEST_DIR="$(realpath "${HOME}/.config/opencode")"
 for f in "${SCRIPT_DIR}/map-models.json" "${SCRIPT_DIR}/map-models.jsonc"; do
 	if [[ -f "$f" ]]; then
 		CONFIG_FILE="$f"
@@ -54,7 +54,7 @@ CACHED_JSON_CONTENT=""
 
 fetch_models_once() {
 	if [[ -z "$AVAILABLE_MODELS" ]]; then
-		AVAILABLE_MODELS=$(opencode models 2>/dev/null | grep -oE '[^[:space:]]+/[^[:space:]]+' | sort -u || true)
+		AVAILABLE_MODELS=$(opencode models 2>/dev/null | grep -oE '[^[:space:]]+/[^[:space:]]+' | sort -u)
 	fi
 }
 
@@ -146,16 +146,6 @@ check_dependencies() {
 		exit "$EXIT_MISSING_DEPENDENCY"
 	fi
 
-	# Check for Python (optional but recommended for JSONC comment handling)
-	local has_json_parser=false
-	if command -v python3 &>/dev/null || command -v python &>/dev/null; then
-		has_json_parser=true
-	fi
-
-	if [[ "$has_json_parser" == false ]]; then
-		echo "Warning: Python not found. JSONC comment stripping will use basic sed (may fail on complex comments)" >&2
-		echo "         Install Python for full JSONC support" >&2
-	fi
 }
 
 validate_path_safety() {
@@ -251,50 +241,7 @@ data = json.loads(content)
 
 # Output as JSON
 print(json.dumps(data))
-' "$file"
-	elif command -v python &>/dev/null; then
-		python -c '
-import json, sys, re
-
-# Read file
-content = open(sys.argv[1]).read()
-
-# Remove single-line comments (but preserve URLs with ://)
-lines = []
-for line in content.split("\n"):
-    # Find // position but skip ://
-    pos = line.find("//")
-    while pos != -1:
-        # Check if preceded by : (part of URL)
-        if pos > 0 and line[pos-1] == ":":
-            # This is part of URL, find next //
-            pos = line.find("//", pos+2)
-        else:
-            # This is a comment
-            line = line[:pos]
-            break
-    lines.append(line)
-content = "\n".join(lines)
-
-# Remove multi-line comments
-content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
-
-# Remove empty lines
-content = re.sub(r"^\s*$\n", "", content, flags=re.MULTILINE)
-
-# Remove trailing commas before } or ]
-content = re.sub(r",(\s*[}\]])", r"\1", content)
-
-# Parse as JSON
-data = json.loads(content)
-
-# Output as JSON
-print(json.dumps(data))
-' "$file"
-	else
-		# Fallback: remove single-line and multi-line comments
-		# Note: This is a simplified version and may not handle all cases
-		sed 's|^[[:space:]]*//.*||g' "$file" | sed 's|/\*.*\*/||g'
+	' "$file"
 	fi
 }
 
