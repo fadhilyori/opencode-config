@@ -1,6 +1,35 @@
 #!/bin/bash
 set -euo pipefail
 
+# Exit codes
+readonly EXIT_SUCCESS=0
+readonly EXIT_INVALID_ARGS=1
+readonly EXIT_MISSING_DEPENDENCY=2
+readonly EXIT_VALIDATION_ERROR=3
+readonly EXIT_FILE_ERROR=4
+readonly EXIT_CONFIG_ERROR=5
+readonly EXIT_USER_CANCEL=6
+
+# Error reporting helper
+error_exit() {
+	local code="$1"
+	local message="$2"
+	echo "Error: $message" >&2
+	exit "$code"
+}
+
+# Temp file tracking for cleanup
+TEMP_FILES=()
+
+cleanup() {
+	local tmp
+	for tmp in "${TEMP_FILES[@]}"; do
+		[[ -f "$tmp" ]] && rm -f "$tmp"
+	done
+}
+
+trap cleanup EXIT INT TERM
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${SCRIPT_DIR}/src"
 DEST_DIR="$(realpath "${HOME}/.config/opencode" 2>/dev/null || echo "${HOME}/.config/opencode")"
@@ -11,8 +40,7 @@ for f in "${SCRIPT_DIR}/map-models.json" "${SCRIPT_DIR}/map-models.jsonc"; do
 	fi
 done
 if [[ ! -f "$CONFIG_FILE" ]]; then
-	echo "Error: Config file not found (looked for map-models.json and map-models.jsonc)"
-	exit 1
+	error_exit "$EXIT_CONFIG_ERROR" "Config file not found (looked for map-models.json and map-models.jsonc)"
 fi
 DRY_RUN=false
 VALIDATE_ONLY=false
@@ -21,6 +49,7 @@ SKIP_CONFIRM=false
 AVAILABLE_MODELS=""
 MODEL_VALIDATED=0
 ORPHANED_FILES=""
+CACHED_JSON_CONTENT=""
 
 fetch_models_once() {
 	if [[ -z "$AVAILABLE_MODELS" ]]; then
@@ -68,6 +97,20 @@ parse_args() {
 			shift
 			;;
 		--config)
+			if [[ -z "$2" ]] || [[ "$2" == --* ]]; then
+				error_exit "$EXIT_INVALID_ARGS" "--config requires a file path"
+			fi
+			if [[ ! -f "$2" ]]; then
+				error_exit "$EXIT_FILE_ERROR" "Config file not found: $2"
+			fi
+			if [[ "$2" == *".."* ]]; then
+				error_exit "$EXIT_INVALID_ARGS" "Invalid path: $2 (contains ..)"
+			fi
+			if [[ "$2" =~ [[:cntrl:]] ]]; then
+				error_exit "$EXIT_INVALID_ARGS" "Invalid path: $2 (contains control characters)"
+			fi
+			# Validate config content
+			validate_config_content "$2"
 			CONFIG_FILE="$2"
 			shift 2
 			;;
@@ -79,19 +122,74 @@ parse_args() {
 			shift
 			;;
 		*)
-			echo "Unknown option: $1"
-			usage
+			error_exit "$EXIT_INVALID_ARGS" "Unknown option: $1"
 			;;
 		esac
 	done
 }
 
-check_opencode() {
+check_dependencies() {
+	local missing_deps=()
+
 	if ! command -v opencode &>/dev/null; then
-		echo "Error: 'opencode' command not found in PATH"
-		echo "Please install opencode or add it to your PATH"
-		exit 1
+		missing_deps+=("opencode")
 	fi
+
+	if ! command -v jq &>/dev/null; then
+		missing_deps+=("jq")
+	fi
+
+	if [[ ${#missing_deps[@]} -gt 0 ]]; then
+		echo "Error: Missing required dependencies:" >&2
+		printf '  - %s\n' "${missing_deps[@]}" >&2
+		exit "$EXIT_MISSING_DEPENDENCY"
+	fi
+
+	# Check for Python (optional but recommended for JSONC comment handling)
+	local has_json_parser=false
+	if command -v python3 &>/dev/null || command -v python &>/dev/null; then
+		has_json_parser=true
+	fi
+
+	if [[ "$has_json_parser" == false ]]; then
+		echo "Warning: Python not found. JSONC comment stripping will use basic sed (may fail on complex comments)" >&2
+		echo "         Install Python for full JSONC support" >&2
+	fi
+}
+
+validate_path_safety() {
+	local path="$1"
+
+	# Check for path traversal
+	if [[ "$path" == *".."* ]]; then
+		return 1
+	fi
+
+	# Check for control characters
+	if [[ "$path" =~ [[:cntrl:]] ]]; then
+		return 1
+	fi
+
+	return 0
+}
+
+validate_config_content() {
+	local file="$1"
+
+	# Basic JSON structure validation
+	if ! jq empty "$file" 2>/dev/null; then
+		error_exit "$EXIT_VALIDATION_ERROR" "Invalid JSON in config file: $file"
+	fi
+
+	# Check for at least one agent definition
+	local agent_count
+	agent_count=$(jq 'keys | length' "$file" 2>/dev/null || echo "0")
+
+	if [[ "$agent_count" -lt 1 ]]; then
+		error_exit "$EXIT_VALIDATION_ERROR" "No agents defined in config file: $file"
+	fi
+
+	return 0
 }
 
 validate_model() {
@@ -106,29 +204,39 @@ validate_model() {
 parse_jsonc() {
 	local file="$1"
 	if [[ ! -f "$file" ]]; then
-		echo "Error: Config file not found: $file"
-		exit 1
+		error_exit "$EXIT_FILE_ERROR" "Config file not found: $file"
 	fi
 
+	if [[ ! -r "$file" ]]; then
+		error_exit "$EXIT_FILE_ERROR" "Config file not readable: $file"
+	fi
+
+	# Use command-line argument instead of heredoc to prevent injection
 	if command -v python3 &>/dev/null; then
-		python3 <<EOF
-import json
-print(json.dumps(json.loads(open("$file").read())))
-EOF
+		python3 -c 'import json, sys; print(json.dumps(json.loads(open(sys.argv[1]).read())))' "$file"
 	elif command -v python &>/dev/null; then
-		python <<EOF
-import json
-print(json.dumps(json.loads(open("$file").read())))
-EOF
+		python -c 'import json, sys; print(json.dumps(json.loads(open(sys.argv[1]).read())))' "$file"
 	else
+		# Fallback: remove single-line and multi-line comments
 		sed 's|^[[:space:]]*//.*||g' "$file" | sed 's|/\*.*\*/||g'
 	fi
+}
+
+get_json_content() {
+	if [[ -z "$CACHED_JSON_CONTENT" ]]; then
+		CACHED_JSON_CONTENT=$(parse_jsonc "$CONFIG_FILE")
+	fi
+	echo "$CACHED_JSON_CONTENT"
+}
+
+clear_json_cache() {
+	CACHED_JSON_CONTENT=""
 }
 
 get_config_for_agent() {
 	local agent="$1"
 	local json_content
-	json_content=$(parse_jsonc "$CONFIG_FILE")
+	json_content=$(get_json_content)
 
 	local model temp
 	model=$(echo "$json_content" | jq -r ".${agent}.model // empty" 2>/dev/null || true)
@@ -143,17 +251,73 @@ get_config_for_agent() {
 
 extract_name_from_file() {
 	local file="$1"
-	grep -m1 '^name:' "$file" | sed 's/^name:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' || true
+	awk '/^name:/ {$1=""; print tolower(substr($0,2)); exit}' "$file"
 }
 
 extract_model_from_file() {
 	local file="$1"
-	grep -m1 '^model:' "$file" | sed 's/^model:[[:space:]]*//' || true
+	awk '/^model:/ {$1=""; print substr($0,2); exit}' "$file"
 }
 
 extract_temperature_from_file() {
 	local file="$1"
-	grep -m1 '^temperature:' "$file" | sed 's/^temperature:[[:space:]]*//' || true
+	awk '/^temperature:/ {$1=""; print substr($0,2); exit}' "$file"
+}
+
+extract_agent_metadata() {
+	local file="$1"
+	awk '
+		/^name:/ {
+			$1=""
+			name=tolower(substr($0,2))
+		}
+		/^model:/ {
+			$1=""
+			model=substr($0,2)
+		}
+		/^temperature:/ {
+			$1=""
+			temp=substr($0,2)
+		}
+		END {
+			print name "|" model "|" temp
+		}
+	' "$file"
+}
+
+normalize_value() {
+	local value="$1"
+	# Trim whitespace
+	value=$(echo "$value" | tr -d '[:space:]')
+	# Normalize null/empty
+	if [[ -z "$value" || "$value" == "null" ]]; then
+		echo ""
+	else
+		echo "$value"
+	fi
+}
+
+compare_temperature() {
+	local old_temp="$1"
+	local new_temp="$2"
+
+	local norm_old norm_new
+	norm_old=$(normalize_value "$old_temp")
+	norm_new=$(normalize_value "$new_temp")
+
+	# Both empty/null means same
+	if [[ -z "$norm_old" && -z "$norm_new" ]]; then
+		return 0
+	fi
+
+	# One empty, one not - different
+	if [[ -z "$norm_old" || -z "$norm_new" ]]; then
+		return 1
+	fi
+
+	# Both have values - compare
+	[[ "$norm_old" == "$norm_new" ]]
+	return $?
 }
 
 list_src_models() {
@@ -200,7 +364,7 @@ validate_all_models() {
 	fetch_models_once
 
 	local json_content invalid_models=0
-	json_content=$(parse_jsonc "$CONFIG_FILE")
+	json_content=$(get_json_content)
 
 	echo "Validating models from: $CONFIG_FILE"
 	echo ""
@@ -209,8 +373,7 @@ validate_all_models() {
 	agents=$(echo "$json_content" | jq -r 'keys | map(select(. != "$schema"))[]' 2>/dev/null || true)
 
 	if [[ -z "$agents" ]]; then
-		echo "Error: No agents found in config file"
-		exit 1
+		error_exit "$EXIT_VALIDATION_ERROR" "No agents found in config file"
 	fi
 
 	for agent in $agents; do
@@ -223,14 +386,14 @@ validate_all_models() {
 			echo "✓ $agent: $model"
 		else
 			echo "✗ $agent: $model (not available)"
+			echo "  Hint: Run 'opencode models' to see available models"
 			((invalid_models++))
 		fi
 	done
 
 	echo ""
 	if [[ $invalid_models -gt 0 ]]; then
-		echo "Error: $invalid_models invalid model(s) found."
-		exit 1
+		error_exit "$EXIT_VALIDATION_ERROR" "$invalid_models invalid model(s) found. Run 'opencode models' to see available models."
 	fi
 
 	echo "All models validated successfully."
@@ -271,10 +434,19 @@ install_files() {
 		fi
 
 		local dest_file="${DEST_DIR}/${rel_path}"
+
+		# Validate path safety
+		if ! validate_path_safety "$rel_path"; then
+			echo "  ✗ Skipping unsafe path: $rel_path" >&2
+			continue
+		fi
+
 		mkdir -p "$(dirname "$dest_file")"
 
-		local agent_name
-		agent_name=$(extract_name_from_file "$file")
+		# Single-pass metadata extraction
+		local metadata agent_name old_model old_temp
+		metadata=$(extract_agent_metadata "$file")
+		IFS='|' read -r agent_name old_model old_temp <<<"$metadata"
 
 		local temp_content
 		temp_content=$(cat "$file")
@@ -287,16 +459,14 @@ install_files() {
 				local new_model new_temp
 				IFS='|' read -r new_model new_temp <<<"$config"
 
-				local old_model old_temp
-				old_model=$(extract_model_from_file "$file")
-				old_temp=$(extract_temperature_from_file "$file")
-
-				if [[ "$old_model" != "$new_model" ]]; then
+				# Replace model if different
+				if [[ -n "$old_model" && -n "$new_model" && "$old_model" != "$new_model" ]]; then
 					temp_content=$(echo "$temp_content" | sed "s|^model:.*|model: $new_model|")
 				fi
 
-				if [[ -n "$new_temp" && "$new_temp" != "null" && -n "$old_temp" ]]; then
-					if [[ "$old_temp" != "$new_temp" ]]; then
+				# Replace temperature if different and valid
+				if [[ -n "$new_temp" && "$new_temp" != "null" ]]; then
+					if ! compare_temperature "$old_temp" "$new_temp"; then
 						temp_content=$(echo "$temp_content" | sed "s|^temperature:.*|temperature: $new_temp|")
 					fi
 				fi
@@ -307,23 +477,20 @@ install_files() {
 		echo "  ✓ $rel_path"
 	done < <(find "$SRC_DIR" -name '*.md' -print0 2>/dev/null || true)
 
+	# Single-pass orphan file detection
 	local orphaned_tmp
-	orphaned_tmp=$(mktemp)
-	while IFS= read -r -d '' src_file; do
-		local subdir="${src_file#$SRC_DIR/}"
-		subdir="${subdir%%/*}"
-		if [[ -d "$DEST_DIR/$subdir" ]]; then
-			while IFS= read -r -d '' dest_file; do
-				local rel_path="${dest_file#$DEST_DIR/}"
-				local check_file="${SRC_DIR}/${rel_path}"
-				if [[ ! -f "$check_file" ]]; then
-					echo "$rel_path"
-				fi
-			done < <(find "$DEST_DIR/$subdir" -name '*.md' -print0 2>/dev/null || true)
+	orphaned_tmp=$(mktemp) || error_exit "$EXIT_FILE_ERROR" "Failed to create temporary file"
+	TEMP_FILES+=("$orphaned_tmp")
+
+	while IFS= read -r -d '' dest_file; do
+		local rel_path="${dest_file#$DEST_DIR/}"
+		local check_file="${SRC_DIR}/${rel_path}"
+		if [[ ! -f "$check_file" ]]; then
+			echo "$rel_path" >>"$orphaned_tmp"
 		fi
-	done < <(find "$SRC_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true) >"$orphaned_tmp"
+	done < <(find "$DEST_DIR" -name '*.md' -print0 2>/dev/null || true)
+
 	ORPHANED_FILES=$(cat "$orphaned_tmp")
-	rm -f "$orphaned_tmp"
 }
 
 confirm_install() {
@@ -336,7 +503,7 @@ confirm_install() {
 	echo ""
 	if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 		echo "Installation cancelled."
-		exit 0
+		exit "$EXIT_USER_CANCEL"
 	fi
 }
 
@@ -396,27 +563,26 @@ main() {
 	parse_args "$@"
 
 	if [[ ! -d "$SRC_DIR" ]]; then
-		echo "Error: Source directory not found: $SRC_DIR"
-		exit 1
+		error_exit "$EXIT_FILE_ERROR" "Source directory not found: $SRC_DIR"
 	fi
 
 	if [[ "$LIST_ONLY" == true ]]; then
 		list_src_models
-		exit 0
+		exit "$EXIT_SUCCESS"
 	fi
 
-	check_opencode
+	check_dependencies
 
 	if [[ "$VALIDATE_ONLY" == true ]]; then
 		validate_all_models
-		exit 0
+		exit "$EXIT_SUCCESS"
 	fi
 
 	if [[ "$DRY_RUN" == true ]]; then
 		validate_all_models
 		echo ""
 		dry_run
-		exit 0
+		exit "$EXIT_SUCCESS"
 	fi
 
 	validate_all_models
