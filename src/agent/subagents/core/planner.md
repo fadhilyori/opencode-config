@@ -14,7 +14,7 @@ permission:
   task:
     researcher: "allow"
     docfetcher: "allow"
-model: minimax-coding-plan/MiniMax-M2.7
+model: will_be_replaced_with_configured_model
 hidden: true
 ---
 

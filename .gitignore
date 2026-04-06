@@ -1,2 +1,11 @@
+# OpenCode Config
+/agent/
+/command/
+/context/
+/skills/
+
 .tmp/
 node_modules/
+map-models.jsonc
+package-lock.json
+bun.lock
