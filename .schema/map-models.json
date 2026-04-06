@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opencode.ai/schemas/map-models.json",
+  "title": "OpenCode Model Mapping Configuration",
+  "description": "Schema for configuring model assignments per subagent in OpenCode",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    }
+  },
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "description": "Model identifier in format 'vendor/model-name'"
+      },
+      "temperature": {
+        "type": "number",
+        "description": "Sampling temperature for model (0 = deterministic, higher = more creative)",
+        "minimum": 0,
+        "maximum": 2
+      }
+    },
+    "required": ["model"],
+    "additionalProperties": false
+  }
+}

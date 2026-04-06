@@ -1,0 +1,47 @@
+{
+    "$schema": "https://raw.githubusercontent.com/fadhilyori/opencode-config/refs/heads/main/.schema/map-models.json",
+    "kai": {
+        "model": "opencode-go/minimax-m2.7"
+        // "temperature": 0.2
+    },
+    "auditor": {
+        "model": "opencode-go/minimax-m2.7"
+        // "temperature": 0.1
+    },
+    "implementer": {
+        "model": "opencode-go/minimax-m2.5"
+        // "temperature": 0
+    },
+    "testauthor": {
+        "model": "opencode-go/minimax-m2.5"
+        // "temperature": 0.1
+    },
+    "validator": {
+        "model": "opencode-go/glm-5"
+        // "temperature": 0.1
+    },
+    "docfetcher": {
+        "model": "opencode-go/kimi-k2.5"
+        // "temperature": 0.1
+    },
+    "planner": {
+        "model": "opencode-go/glm-5"
+        // "temperature": 0.1
+    },
+    "researcher": {
+        "model": "opencode-go/glm-5"
+        // "temperature": 0.1
+    },
+    "documenter": {
+        "model": "opencode-go/minimax-m2.7"
+        // "temperature": 0.2
+    },
+    "interfacedesigner": {
+        "model": "opencode-go/kimi-k2.5"
+        // "temperature": 0.2
+    },
+    "platformengineer": {
+        "model": "opencode-go/minimax-m2.7"
+        // "temperature": 0.1
+    }
+}
