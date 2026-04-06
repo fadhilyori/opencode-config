@@ -4,7 +4,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${SCRIPT_DIR}/src"
 DEST_DIR="${HOME}/.config/opencode"
-CONFIG_FILE="${SCRIPT_DIR}/map-models.jsonc"
+for f in "${SCRIPT_DIR}/map-models.json" "${SCRIPT_DIR}/map-models.jsonc"; do
+	if [[ -f "$f" ]]; then
+		CONFIG_FILE="$f"
+		break
+	fi
+done
+if [[ ! -f "$CONFIG_FILE" ]]; then
+	echo "Error: Config file not found (looked for map-models.json and map-models.jsonc)"
+	exit 1
+fi
 DRY_RUN=false
 VALIDATE_ONLY=false
 LIST_ONLY=false
@@ -25,7 +34,7 @@ Options:
     --dry-run       Preview changes without executing
     --validate      Only validate models without installing
     --list          List current models from src files
-    --config FILE   Use specified config file (default: ./map-models.jsonc)
+    --config FILE   Use specified config file (default: ./map-models.json[.c])
     -h, --help      Show this help message
 
 Installs opencode configuration by copying files from src/ to ~/.config/opencode/,
@@ -94,9 +103,19 @@ parse_jsonc() {
 		exit 1
 	fi
 
-	local json_content
-	json_content=$(sed 's/\/\/.*//g' "$file" | sed 's/\/\*.*\*\///g')
-	echo "$json_content"
+	if command -v python3 &>/dev/null; then
+		python3 <<EOF
+import json
+print(json.dumps(json.loads(open("$file").read())))
+EOF
+	elif command -v python &>/dev/null; then
+		python <<EOF
+import json
+print(json.dumps(json.loads(open("$file").read())))
+EOF
+	else
+		sed 's|^[[:space:]]*//.*||g' "$file" | sed 's|/\*.*\*/||g'
+	fi
 }
 
 get_config_for_agent() {
@@ -180,7 +199,7 @@ validate_all_models() {
 	echo ""
 
 	local agents
-	agents=$(echo "$json_content" | jq -r 'keys[]' 2>/dev/null || true)
+	agents=$(echo "$json_content" | jq -r 'keys | map(select(. != "$schema"))[]' 2>/dev/null || true)
 
 	if [[ -z "$agents" ]]; then
 		echo "Error: No agents found in config file"
