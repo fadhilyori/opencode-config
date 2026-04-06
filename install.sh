@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${SCRIPT_DIR}/src"
-DEST_DIR="${HOME}/.config/opencode"
+DEST_DIR="$(realpath "${HOME}/.config/opencode" 2>/dev/null || echo "${HOME}/.config/opencode")"
 for f in "${SCRIPT_DIR}/map-models.json" "${SCRIPT_DIR}/map-models.jsonc"; do
 	if [[ -f "$f" ]]; then
 		CONFIG_FILE="$f"
@@ -17,8 +17,10 @@ fi
 DRY_RUN=false
 VALIDATE_ONLY=false
 LIST_ONLY=false
+SKIP_CONFIRM=false
 AVAILABLE_MODELS=""
 MODEL_VALIDATED=0
+ORPHANED_FILES=""
 
 fetch_models_once() {
 	if [[ -z "$AVAILABLE_MODELS" ]]; then
@@ -35,6 +37,7 @@ Options:
     --validate      Only validate models without installing
     --list          List current models from src files
     --config FILE   Use specified config file (default: ./map-models.json[.c])
+    -y, --yes       Skip all confirmations
     -h, --help      Show this help message
 
 Installs opencode configuration by copying files from src/ to ~/.config/opencode/,
@@ -70,6 +73,10 @@ parse_args() {
 			;;
 		-h | --help)
 			usage
+			;;
+		-y | --yes)
+			SKIP_CONFIRM=true
+			shift
 			;;
 		*)
 			echo "Unknown option: $1"
@@ -299,9 +306,30 @@ install_files() {
 		printf '%s\n' "$temp_content" >"$dest_file"
 		echo "  ✓ $rel_path"
 	done < <(find "$SRC_DIR" -name '*.md' -print0 2>/dev/null || true)
+
+	local orphaned_tmp
+	orphaned_tmp=$(mktemp)
+	while IFS= read -r -d '' src_file; do
+		local subdir="${src_file#$SRC_DIR/}"
+		subdir="${subdir%%/*}"
+		if [[ -d "$DEST_DIR/$subdir" ]]; then
+			while IFS= read -r -d '' dest_file; do
+				local rel_path="${dest_file#$DEST_DIR/}"
+				local check_file="${SRC_DIR}/${rel_path}"
+				if [[ ! -f "$check_file" ]]; then
+					echo "$rel_path"
+				fi
+			done < <(find "$DEST_DIR/$subdir" -name '*.md' -print0 2>/dev/null || true)
+		fi
+	done < <(find "$SRC_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true) >"$orphaned_tmp"
+	ORPHANED_FILES=$(cat "$orphaned_tmp")
+	rm -f "$orphaned_tmp"
 }
 
 confirm_install() {
+	if [[ "$SKIP_CONFIRM" == true ]]; then
+		return
+	fi
 	echo "This will install configuration to: $DEST_DIR"
 	echo ""
 	read -p "Do you want to continue? [y/N] " -n 1 -r
@@ -310,6 +338,58 @@ confirm_install() {
 		echo "Installation cancelled."
 		exit 0
 	fi
+}
+
+handle_orphaned_files() {
+	if [[ -z "$ORPHANED_FILES" ]]; then
+		return
+	fi
+
+	local count
+	count=$(echo "$ORPHANED_FILES" | grep -c '^' || true)
+	if [[ "$count" -eq 0 ]]; then
+		return
+	fi
+
+	echo ""
+	echo "Orphaned files detected ($count file(s)):"
+	echo ""
+	echo "$ORPHANED_FILES" | while IFS= read -r line; do
+		[[ -n "$line" ]] && echo "  - $line"
+	done
+
+	if [[ "$SKIP_CONFIRM" == true ]]; then
+		echo ""
+		echo "Deleting orphaned files (--yes)..."
+		echo "$ORPHANED_FILES" | while IFS= read -r rel_path; do
+			[[ -z "$rel_path" ]] && continue
+			local dest_file="${DEST_DIR}/${rel_path}"
+			if [[ -f "$dest_file" ]]; then
+				rm "$dest_file"
+				echo "  removed: $rel_path"
+			fi
+		done
+		echo "Orphaned files removed."
+		return
+	fi
+
+	echo ""
+	read -p "Delete these orphaned files? [y/N] " -n 1 -r
+	echo ""
+	if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+		echo "Orphaned files kept."
+		return
+	fi
+
+	echo "$ORPHANED_FILES" | while IFS= read -r rel_path; do
+		[[ -z "$rel_path" ]] && continue
+		local dest_file="${DEST_DIR}/${rel_path}"
+		if [[ -f "$dest_file" ]]; then
+			rm "$dest_file"
+			echo "  removed: $rel_path"
+		fi
+	done
+	echo "Orphaned files removed."
 }
 
 main() {
@@ -343,6 +423,7 @@ main() {
 	echo ""
 	confirm_install
 	install_files
+	handle_orphaned_files
 }
 
 main "$@"
